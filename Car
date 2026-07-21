@@ -1,0 +1,136 @@
+#include <WiFi.h>
+#include <esp_now.h>
+
+//=================== Motor Pins ===================
+
+#define IN1 26
+#define IN2 27
+#define IN3 14
+#define IN4 12
+
+//=================== Commands ===================
+
+#define STOP_CMD       0
+#define FORWARD_CMD    1
+#define BACKWARD_CMD   2
+#define RIGHT_CMD      3
+#define LEFT_CMD       4
+
+//=================================================
+
+typedef struct
+{
+  uint8_t command;
+} struct_message;
+
+struct_message myData;
+
+//=================== Motor Functions ===================
+
+void stopCar()
+{
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+}
+
+void forward()
+{
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void backward()
+{
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void right()
+{
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void left()
+{
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+//=================== ESP-NOW Callback ===================
+
+void OnDataRecv(const esp_now_recv_info_t *info,
+                const uint8_t *incomingData,
+                int len)
+{
+  memcpy(&myData, incomingData, sizeof(myData));
+
+  switch (myData.command)
+  {
+    case STOP_CMD:
+      stopCar();
+      break;
+
+    case FORWARD_CMD:
+      forward();
+      break;
+
+    case BACKWARD_CMD:
+      backward();
+      break;
+
+    case RIGHT_CMD:
+      right();
+      break;
+
+    case LEFT_CMD:
+      left();
+      break;
+
+    default:
+      stopCar();
+      break;
+  }
+}
+
+//=================== Setup ===================
+
+void setup()
+{
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  stopCar();
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+
+  if (esp_now_init() != ESP_OK)
+  {
+    while (true);
+  }
+
+  esp_now_register_recv_cb(OnDataRecv);
+}
+
+//=================== Loop ===================
+
+void loop()
+{
+}
