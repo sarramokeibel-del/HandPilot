@@ -1,0 +1,153 @@
+#include <WiFi.h>
+#include <esp_now.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+
+//================= MPU =================
+Adafruit_MPU6050 mpu;
+
+//=============== ESP-NOW ===============
+
+
+uint8_t receiverAddress[] = {0x08, 0x3A, 0xF2, 0xB5, 0x50, 0xBC};
+
+
+
+#define STOP_CMD       0
+#define FORWARD_CMD    1
+#define BACKWARD_CMD   2
+#define RIGHT_CMD      3
+#define LEFT_CMD       4
+
+
+typedef struct
+{
+  uint8_t command;
+} struct_message;
+
+struct_message myData;
+
+esp_now_peer_info_t peerInfo;
+
+//========================================
+
+const float ENTER_THRESHOLD = 6.0;
+const float EXIT_THRESHOLD  = 4.0;
+
+uint8_t currentCommand = STOP_CMD;
+uint8_t lastCommand    = 255;
+
+//========================================
+
+void setup()
+{
+  Serial.begin(115200);
+
+  Wire.begin(21,22);
+  Wire.setClock(400000);
+
+  if (!mpu.begin())
+  {
+    Serial.println("MPU6050 Not Found!");
+    while (1);
+  }
+
+ 
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+
+  if (esp_now_init() != ESP_OK)
+  {
+    Serial.println("ESP-NOW Init Failed");
+    while (1);
+  }
+
+  memcpy(peerInfo.peer_addr, receiverAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+
+  if (esp_now_add_peer(&peerInfo) != ESP_OK)
+  {
+    Serial.println("Add Peer Failed");
+    while (1);
+  }
+
+  Serial.println("Glove Ready");
+}
+
+//========================================
+
+void loop()
+{
+  sensors_event_t a, g, temp;
+
+  mpu.getEvent(&a, &g, &temp);
+
+  float x = a.acceleration.x;
+  float y = a.acceleration.y;
+
+  switch(currentCommand)
+  {
+    case STOP_CMD:
+
+      if(x < -ENTER_THRESHOLD)
+        currentCommand = FORWARD_CMD;
+
+      else if(x > ENTER_THRESHOLD)
+        currentCommand = BACKWARD_CMD;
+
+      else if(y > ENTER_THRESHOLD)
+        currentCommand = RIGHT_CMD;
+
+      else if(y < -ENTER_THRESHOLD)
+        currentCommand = LEFT_CMD;
+
+      break;
+
+    case FORWARD_CMD:
+
+      if(x > -EXIT_THRESHOLD)
+        currentCommand = STOP_CMD;
+
+      break;
+
+    case BACKWARD_CMD:
+
+      if(x < EXIT_THRESHOLD)
+        currentCommand = STOP_CMD;
+
+      break;
+
+    case RIGHT_CMD:
+
+      if(y < EXIT_THRESHOLD)
+        currentCommand = STOP_CMD;
+
+      break;
+
+    case LEFT_CMD:
+
+      if(y > -EXIT_THRESHOLD)
+        currentCommand = STOP_CMD;
+
+      break;
+  }
+
+  if(currentCommand != lastCommand)
+  {
+    myData.command = currentCommand;
+
+    esp_now_send(receiverAddress,
+                 (uint8_t *)&myData,
+                 sizeof(myData));
+
+    lastCommand = currentCommand;
+  }
+
+  delay(5);
+}
